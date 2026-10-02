@@ -1,8 +1,6 @@
 # 编译单元：ZCU (Zig Compilation Unit) 与单体编译
 
-如果你仔细观察过 `.zig-cache/o/` 目录，你经常会看到类似 `example_zcu.o` 或 `build_zcu.o` 这样的目标文件。
-
-这里的 **ZCU** 全称为 **Zig Compilation Unit（Zig 编译单元）**，它代表了 Zig 编译器处理源代码的核心编译模型。
+在 `.zig-cache/o/` 目录中经常能看到类似 `example_zcu.o` 或 `build_zcu.o` 的目标文件。这里的 **ZCU** 即 **Zig Compilation Unit（Zig 编译单元）**，是 Zig 编译器组织和分析源代码的核心单元。
 
 ---
 
@@ -55,21 +53,21 @@ graph TD
     style Bin_Z fill:#e6ffe6,stroke:#009900,stroke-width:2px;
 ```
 
-### 为什么 Zig 要采用类似 Unity Build 的 ZCU 模型？
-1. **彻底打通跨模块 `comptime`**：
-   在 Zig 中，类型是一等公民，泛型通过 `comptime` 函数返回 `type` 实现。模块 A 传入一个参数让模块 B 生成一个特定类型，这一过程要求语义分析器（Sema）必须拥有全项目的全局类型感知能力；
-2. **彻底的跨模块死代码消除（DCE）**：
-   在 ZCU 中，只有真正被调用的函数、被使用的结构体字段才会进入语义分析与机器码生成，未使用的函数直接被裁剪，无需等待链接阶段昂贵的 LTO（Link-Time Optimization）；
-3. **极佳的机器码内联机会**：
-   函数是否内联不受源文件边界的限制，优化器对整个调用链路一览无余。
+### 为什么 Zig 采用类似 Unity Build 的 ZCU 模型？
+1. **全局跨模块 `comptime`**：
+   Zig 中的泛型通过 `comptime` 函数返回类型实现。模块间传递编译期参数并按需生成类型，要求语义分析器（Sema）具备全项目范围的类型推导与感知能力；
+2. **跨模块死代码消除（DCE）**：
+   在 ZCU 中，只有真正被调用的函数和被引用的类型才会进入语义分析与机器码生成，未使用的符号会被直接裁剪，无需完全依赖链接阶段的 LTO（Link-Time Optimization）；
+3. **跨模块内联优化**：
+   函数内联不受单源文件边界限制，编译器可以对完整调用链路进行优化。
 
-同一个构建目标引用的所有 Zig 模块，最终只会在编译器的处理下输出**单个单体目标文件（如 `app_zcu.o`）**。
+同一个构建目标引用的所有 Zig 模块，最终由编译器统一输出为**单个目标文件（如 `app_zcu.o`）**。
 
 ---
 
 ## 2. 编译中间表示（IR）管线解析
 
-从 `.zig` 源码到最终的目标文件，Zig 编译器经历了严谨的四层流水线：
+从 `.zig` 源码到目标文件，编译流程分为以下环节：
 
 ```mermaid
 graph LR
@@ -84,7 +82,7 @@ graph LR
     end
 
     subgraph S_Back ["后端代码生成 (CodeGen)"]
-        AIR --> BE_Native["Native 后端 (Debug 极速构建)"]
+        AIR --> BE_Native["Native 后端 (Debug 快速构建)"]
         AIR --> BE_LLVM["LLVM 后端 (Release 深度优化)"]
         BE_Native --> Obj["app_zcu.o"]
         BE_LLVM --> Obj
@@ -105,11 +103,11 @@ graph LR
 ```
 
 1. **AST（抽象语法树）**：
-   位于 [lib/std/zig/Ast.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/lib/std/zig/Ast.zig)，采用扁平化的 `MultiArrayList` 结构，提供极高缓存命中率的标记扫描；
+   位于 [lib/std/zig/Ast.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/lib/std/zig/Ast.zig)，采用扁平化的 `MultiArrayList` 结构，提供高效的缓存局部性；
 2. **ZIR（Zig Intermediate Representation）**：
-   位于 [lib/std/zig/Zir.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/lib/std/zig/Zir.zig)。它是**无类型的平铺指令序列**，每个 `.zig` 文件独立生成一个 ZIR，并在生成后直接序列化存放在 `.zig-cache/z/` 中，供增量构建极速复用；
+   位于 [lib/std/zig/Zir.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/lib/std/zig/Zir.zig)。它是**无类型的平铺指令序列**，每个 `.zig` 文件独立生成一个 ZIR，并在生成后直接序列化存放在 `.zig-cache/z/` 中，供增量构建复用；
 3. **AIR（Analyzed Intermediate Representation）**：
-   位于 [src/Air.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/src/Air.zig)。语义分析器消费 ZIR 并执行完所有 `comptime` 估值后，输出带有完全确定的类型与无二义性控制流图的 AIR；
+   位于 [src/Air.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/src/Air.zig)。语义分析器消费 ZIR 并执行完所有 `comptime` 估值后，输出带有完全确定类型与控制流图的 AIR；
 4. **后端选择（Native vs LLVM）**：
-   - **Native 后端**：在 Debug 构建时，Zig 直接将 AIR 翻译为当前 CPU 的机器码目标文件，绕过耗时的 LLVM IR 生成，实现亚秒级甚至几十毫秒级的极限构建响应；
-   - **LLVM 后端**：在 Release 构建时，Zig 将 AIR 翻译为 LLVM IR，充分利用 LLVM 积累数十年的成熟优化器进行向量化与重排序，生成极限吞吐性能的机器码。
+   - **Native 后端**：在 Debug 模式下，Zig 可以直接将 AIR 翻译为目标架构机器码，绕过 LLVM IR 生成环节，缩短构建耗时；
+   - **LLVM 后端**：在 Release 模式下，Zig 将 AIR 转换为 LLVM IR，调用 LLVM 优化器与后端生成更高执行效率的机器码。

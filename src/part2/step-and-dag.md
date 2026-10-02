@@ -1,12 +1,12 @@
 # 计算图抽象：Step 与有向无环图 (DAG)
 
-构建系统的本质，是**任务编排（Task Orchestration）**。在 Zig 构建系统中，整个构建管线被严谨地抽象为一张有向无环图（Directed Acyclic Graph, DAG），图中的每一个任务节点都是一个 `std.Build.Step`。
+在 Zig 构建系统中，构建任务被组织为一张有向无环图（DAG），图中的每个任务节点对应一个 `std.Build.Step`。
 
 ---
 
 ## 1. 什么是 Step？
 
-在 Zig 源码中，[lib/std/Build/Step.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/lib/std/Build/Step.zig) 定义了通用的任务节点抽象：
+在 Zig 源码中，[lib/std/Build/Step.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/lib/std/Build/Step.zig) 定义了任务节点的通用结构：
 
 ```zig
 // lib/std/Build/Step.zig
@@ -39,37 +39,35 @@ pub const Step = struct {
 };
 ```
 
-### 核心属性拆解：
-1. **统一的任务契约（`makeFn`）**：
-   每个 Step 都挂载了一个执行函数指针：
-   `*const fn (step: *Step, options: MakeOptions) anyerror!void`
-   无论是调用编译器编译源码、运行测试二进制、写入文件还是转译 C 头文件，只要实现了该接口，就能无缝接入构建图。
+### 核心属性：
+1. **任务执行函数（`makeFn`）**：
+   函数签名为 `*const fn (step: *Step, options: MakeOptions) anyerror!void`。无论是调用编译器、运行测试、写文件还是转译 C 头文件，只要实现该签名，即可作为构建节点接入任务图。
 2. **依赖关系列表（`dependencies` 与 `dependants`）**：
-   记录该节点运行所必须等待的前置依赖（`dependencies`），以及依赖该节点的下游任务（`dependants`）。
-3. **所属构建器上下文（`owner`）**：
+   记录当前节点依赖的前置任务（`dependencies`），以及依赖当前节点的后续任务（`dependants`）。
+3. **所属上下文（`owner`）**：
    指向创建该 Step 的 `*std.Build` 实例。
 
 ---
 
-## 2. 常见内置 Step 类型与职责
+## 2. 常见内置 Step 类型
 
-Zig 标准库根据不同构建需求，内置了一系列特化的 Step 实现：
+Zig 标准库内置了多种特化的 Step 实现：
 
-| Step 类型 (Id) | 对应结构体 | 典型职责与场景 |
+| Step 类型 (Id) | 对应结构体 | 职责与常见场景 |
 | :--- | :--- | :--- |
-| `top_level` | `Step` | 命令行直接调用的顶层命名入口（如 `b.step("test", ...)` 或 `b.default_step`） |
-| `compile` | `Step.Compile` | 核心编译与链接任务，驱动编译器生成可执行文件、静态库或动态库 |
-| `install_artifact` | `Step.InstallArtifact` | 将编译出的二进制产物从缓存目录拷贝安装到全局输出目录（`zig-out/`） |
-| `run` | `Step.Run` | 运行生成的可执行文件或外部任意命令（常用于运行单元测试） |
-| `write_file` | `Step.WriteFile` | 动态在缓存目录创建并写入文件或代码片段 |
-| `config_header` | `Step.ConfigHeader` | 读取 `.h.in` CMake 风格模板，根据配置项渲染并生成 `config.h` |
+| `top_level` | `Step` | 命令行调用的顶层入口（如 `b.step("test", ...)` 或 `b.default_step`） |
+| `compile` | `Step.Compile` | 编译与链接任务，生成可执行文件、静态库或动态库 |
+| `install_artifact` | `Step.InstallArtifact` | 将产物从缓存目录安装到输出目录（`zig-out/`） |
+| `run` | `Step.Run` | 运行生成的可执行文件或外部命令（常用于执行单元测试） |
+| `write_file` | `Step.WriteFile` | 在缓存目录动态创建并写入文件 |
+| `config_header` | `Step.ConfigHeader` | 解析 `.h.in` 模板并渲染生成配置头文件 |
 | `translate_c` | `Step.TranslateC` | 调用编译器将 C 头文件转译为 Zig AST 与 Module |
 
 ---
 
-## 3. Step 依赖拓扑图实战
+## 3. Step 依赖拓扑图示例
 
-一个典型的 Zig 工程构建图如下图所示：
+典型的 Zig 项目构建图结构如下：
 
 ```mermaid
 graph TD
@@ -121,22 +119,24 @@ graph TD
     style S_RunTest fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
 ```
 
-### 拓扑依赖的建立：`dependOn`
-在代码中，我们通过 `step_a.dependOn(step_b)` 建立先后时序：
+### 建立依赖：`dependOn`
+
+在代码中通过 `step_a.dependOn(step_b)` 指定先后顺序：
+
 ```zig
-// Create top-level step: "zig build test"
+// 1. 创建顶层命令入口："zig build test"
 const test_step = b.step("test", "Run library unit tests");
 
-// Create unit test executable step
+// 2. 创建单元测试编译步骤
 const unit_tests = b.addTest(.{
     .root_module = my_module,
 });
 
-// Create run step for executing the test binary
+// 3. 创建测试执行步骤
 const run_unit_tests = b.addRunArtifact(unit_tests);
 
-// Establish DAG edge: test_step requires run_unit_tests
+// 4. 建立依赖边：test_step 依赖 run_unit_tests
 test_step.dependOn(&run_unit_tests.step);
 ```
 
-当执行 `zig build test` 时，调度器首先寻找 `test_step`，发现其依赖 `run_unit_tests`，而 `run_unit_tests` 又隐式依赖 `unit_tests`（编译测试二进制）。于是调度器便会自底向上、按照拓扑顺序依次调度执行。
+执行 `zig build test` 时，调度器定位到 `test_step`，沿依赖边发现其需要 `run_unit_tests`，而 `run_unit_tests` 依赖 `unit_tests` 产出二进制，从而按拓扑序依次执行。

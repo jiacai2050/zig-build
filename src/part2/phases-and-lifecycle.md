@@ -1,14 +1,14 @@
 # 两阶段生命周期：配置期与执行期
 
-理解 Zig 构建系统最关键的一道思维分水岭，是**严格区分“配置期”（Configuration Phase）与“执行期”（Execution Phase）**。
+编写 `build.zig` 时，需要区分配置期（Configuration Phase）与执行期（Execution Phase）。
 
-初学者编写 `build.zig` 时遇到的绝大多数疑惑（例如“为什么动态生成的文件在 `build()` 读不到”、“为什么我的文件写入逻辑总是报错”），本质上都是因为混淆了这两个截然不同的生命周期阶段。
+如果混淆这两个阶段，容易在 `build()` 中尝试直接读取尚未生成的文件而导致文件不存在报错。
 
 ---
 
-## 1. 生命周期的宏观演进
+## 1. 生命周期的两个阶段
 
-当你敲下 `zig build` 之后，整个构建流程经历以下两个阶段：
+执行 `zig build` 时，构建系统依次经历以下两个阶段：
 
 ```mermaid
 graph TD
@@ -16,25 +16,25 @@ graph TD
         B_Code["执行 build.zig 中的 build(b) 入口"]
         B_Graph["在内存中实例化 Step 节点"]
         B_Option["解析命令行选项 (-Dtarget, -Doptimize 等)"]
-        B_Edge["建立节点间依赖边 (dependOn / LazyPath)"]
+        B_Edge["建立节点间依赖关系 (dependOn / LazyPath)"]
         B_Code --> B_Option
         B_Option --> B_Graph
         B_Graph --> B_Edge
     end
 
     subgraph Phase2 ["阶段二：执行期 (Execution / Graph Execution)"]
-        E_Topo["拓扑遍历截取目标子图 (如 install / run)"]
-        E_Pool["工作线程池并发拉取就绪任务"]
+        E_Topo["拓扑排序并截取目标子图 (如 install / run)"]
+        E_Pool["工作线程池并发调度就绪任务"]
         E_Cache{"Cache.Manifest<br/>内容哈希比对"}
         E_Skip["命中缓存：跳过执行 (Cache Hit)"]
-        E_Worker["未命中：调用 Step.make() 生成文件/调用编译器"]
+        E_Worker["未命中：调用 Step.make() 编译或生成文件"]
         E_Topo --> E_Pool
         E_Pool --> E_Cache
         E_Cache -- "是" --> E_Skip
         E_Cache -- "否" --> E_Worker
     end
 
-    Phase1 -- "构建图定型，移交调度引擎" --> Phase2
+    Phase1 -- "构建图定型，移交调度器" --> Phase2
 
     classDef default fill:#f8f9fa,stroke:#495057;
     style Phase1 fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
@@ -54,7 +54,7 @@ graph TD
 
 ## 2. 阶段一：配置期（Graph Evaluation）
 
-在配置期，由构建运行器调用你在 `build.zig` 中定义的唯一公开函数：
+配置期由构建运行器调用 `build.zig` 中的公开入口：
 
 ```zig
 pub fn build(b: *std.Build) void {
@@ -62,48 +62,44 @@ pub fn build(b: *std.Build) void {
 }
 ```
 
-### 核心特征与限制：
-1. **纯内存图构建**：
-   在 `build(b)` 函数体内，无论是调用 `b.addExecutable(...)`、`b.addLibrary(...)` 还是 `b.addConfigHeader(...)`，**都不会触发实际的编译操作，也不会向磁盘输出任何生成文件**。
-   这些 API 的唯一行为，是在 `b.allocator` 堆内存中分配一个个 `std.Build.Step` 对象，记录配置参数，并将它们连成图结构。
-2. **极速运行**：
-   因为不涉及任何耗时的磁盘 I/O 和编译器调用，配置阶段通常在几毫秒至十几毫秒内即可极速完成。
-3. **禁止假设生成物存在**：
-   **绝对不要**在 `build()` 函数内部使用普通的同步文件系统 API 读取由前序步骤生成的文件：
+### 核心特征：
+1. **内存中构建任务图**：
+   在 `build(b)` 函数中调用的 `b.addExecutable`、`b.addLibrary` 或 `b.addConfigHeader` 等 API，不会立即启动编译器，也不会向磁盘输出生成文件。这些 API 负责在堆内存中分配 `std.Build.Step` 节点，记录编译配置并连接依赖边。
+2. **执行轻量**：
+   由于不涉及编译与重度 I/O，配置阶段通常在几毫秒至几十毫秒内完成。
+3. **不能直接读取生成物**：
+   不要在 `build()` 中通过同步文件系统 API 读取由前序步骤生成的文件：
    ```zig
-   // ❌ 常见新手错误：在配置期试图读取执行期才生成的文件
+   // 错误示例：在配置期读取尚未生成的文件
    const config_h = b.addConfigHeader(...);
-   // 错误！此时磁盘上根本还没有生成 config.h 文件，此处会抛出 FileNotFound 异常！
+   // 此时磁盘上尚未生成 config.h，直接打开会抛出 FileNotFound 异常
    const file = try std.fs.cwd().openFile("config.h", .{});
    ```
+   传递生成物路径时，应使用后续章节介绍的 `LazyPath`。
 
 ---
 
 ## 3. 阶段二：执行期（Graph Execution）
 
-当 `build(b)` 函数返回后，内存中的计算图（DAG）结构已经完全定型。此时，控制权移交给构建引擎的调度器。
+当 `build(b)` 函数返回后，内存中的计算图（DAG）定型，控制权移交给任务调度器。
 
-### 核心流程：
-1. **确定目标子图（Target Subgraph）**：
-   命令行参数指定了要执行的顶层任务（如 `zig build` 默认执行 `b.default_step`，即 `install`；`zig build test` 执行 `test` Step）。
-   引擎从目标节点出发，进行反向深度优先遍历，只截取完成该目标必须依赖的前置 Step 子图，并完成**拓扑排序（Topological Sort）**。
+### 执行流程：
+1. **确定目标子图**：
+   根据命令行指定的顶层任务（如默认的 `install`，或 `test`/`run`），调度器从目标节点开始反向遍历，截取所需的依赖子图并完成拓扑排序；
 2. **多线程并发调度**：
-   调度器启动与 CPU 核心数相匹配的工作线程池。没有前置依赖、或前置依赖已全部就绪的任务节点，会被推入待执行任务队列。
-3. **哈希缓存判定（Cache Lookup）**：
-   每个 Step 在真正干活之前，会根据自身的输入参数、引用的文件内容生成 Manifest Hash。如果 `.zig-cache/` 中已有该哈希的记录且输出完整，则直接命中（Cache Hit），毫秒级跳过。
-4. **触发 `Step.make()`**：
-   若未命中缓存，线程池才会调用该 Step 绑定的 `makeFn` 函数，真正派生编译器进程、写入文件或执行测试。
+   调度器启动工作线程池，将入度为 0（无前置依赖或前置依赖已就绪）的任务放入待执行队列；
+3. **哈希缓存比对**：
+   每个 Step 在执行前，会根据输入文件、配置选项和环境信息计算 Manifest Hash。如果 `.zig-cache/` 中已有该哈希的有效记录，则直接跳过（Cache Hit）；
+4. **调用 `Step.make()`**：
+   未命中缓存时，线程池调用该 Step 的 `makeFn` 函数，执行编译器调用、文件写入或测试运行。
 
 ---
 
-## 4. 总结与开发心智模型
+## 4. 两阶段对比
 
 | 维度 | 配置期（Configuration Phase） | 执行期（Execution Phase） |
 | :--- | :--- | :--- |
 | **入口** | `pub fn build(b: *std.Build) void` | `step.makeFn(step, options)` |
-| **主要工作** | 声明构建图、解析参数、连接数据依赖 | 检查缓存、执行真实编译、落盘产物 |
-| **并发特征** | 单线程主流程 | 多线程任务池高度并发 |
-| **I/O 操作** | 只允许读取工程中现存的只读静态配置 | 读写 `.zig-cache` 与 `zig-out`，生成动态代码 |
-| **时间开销** | 几毫秒至几十毫秒 | 取决于编译代码量与缓存命中情况 |
-
-将这一心智模型牢记于心后，我们便能自然地理解后续章节中介绍的 `Step`、`LazyPath` 和动态生成 API。
+| **主要工作** | 声明构建图、解析参数、建立依赖边 | 检查缓存、执行真实编译、产物落盘 |
+| **执行方式** | 单线程主流程 | 多线程任务池并发 |
+| **文件访问** | 读取只读静态源码与已有配置文件 | 在 `.zig-cache` 与 `zig-out` 中读写中间产物 |

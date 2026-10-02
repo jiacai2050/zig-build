@@ -1,6 +1,6 @@
 # 实战四：跨平台交叉编译与 Makefile/CI 自动化
 
-得益于 Zig 构建系统的自包含特性，跨平台交叉编译与持续集成（CI）流水线的搭建变得前所未有的轻量和优雅。
+Zig 内置了跨平台工具链与目标平台 libc 符号支持，使交叉编译与持续集成（CI）配置变得相对简单。
 
 ---
 
@@ -19,7 +19,7 @@ zig build -Dtarget=aarch64-windows
 zig build -Dtarget=x86_64-linux-musl
 ```
 
-由于 Zig 内部集成了目标平台的 libc 符号表与内嵌 Clang/LLD，上述命令即使包含大量 C 源码，也**不需要在宿主机安装任何目标平台的 MinGW 或交叉 GCC**。
+由于 Zig 内部集成了目标平台的 libc 符号与 Clang/LLD，上述命令即使包含 C 源码，通常也无需在宿主机安装 MinGW 或交叉 GCC 工具链。
 
 ---
 
@@ -64,7 +64,7 @@ clean:
 
 ## 3. GitHub Actions CI 流水线实践
 
-结合上述 `Makefile`，GitHub Actions 工作流可以精简到极致：
+结合 `Makefile`，GitHub Actions 工作流配置示例如下：
 
 ```yaml
 name: CI
@@ -125,6 +125,6 @@ jobs:
         run: make cross-compile
 ```
 
-### 核心收益：
-1. **本地与 CI 行为 100% 对齐**：开发者在本地执行 `make` 和 `make cross-compile`，与 GitHub Actions 运行的命令完全一致，再也不会发生“本地编译过了但 CI 挂了”的尴尬情况；
-2. **极速交叉编译验证**：在单个廉价的 Ubuntu Runner 上，即可同时验证 Windows x86_64、ARM64 等多个平台的编译合规性，大幅削减 CI 机器成本。
+### 配置说明：
+1. **本地与 CI 行为保持一致**：开发者在本地执行 `make` 和 `make cross-compile`，与 CI 中的执行命令相同，便于在本地复现和排查问题；
+2. **多平台编译验证**：在单个 Linux Runner 上即可完成 Windows、Linux 等多目标架构的交叉编译验证。

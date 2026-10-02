@@ -1,8 +1,8 @@
 # 实战三：复杂第三方 C 库的完整移植实践（以 MariaDB Connector 为例）
 
-移植一个“Hello World”级别的 C 文件非常简单，但在真实工业界，主流 C 库（如 MariaDB Connector/C、SQLite、OpenSSL、cURL）往往包含数十万行源码、复杂的 CMake 宏探测、数十个条件编译源文件以及跨平台的系统 API 差异。
+移植单文件 C 代码通常较为直接，但主流 C 库（如 MariaDB Connector/C、SQLite、OpenSSL 等）通常包含较多源码文件、CMake 配置探测、平台条件编译分支以及第三方依赖。
 
-本章以作者开源的 [zig-mariadb-connector](https://github.com/jiacai2050/zig-mariadb-connector) 为实际工程蓝本，系统梳理移植大型成熟 C 库的标准工业范式。
+本章以开源项目 [zig-mariadb-connector](https://github.com/jiacai2050/zig-mariadb-connector) 为例，梳理移植成熟 C 库到 Zig 构建系统的实践流程。关于社区常用 C 库的封装案例，也可以参考 [All Your Codebase](https://github.com/allyourcodebase/)。
 
 ---
 
@@ -12,7 +12,7 @@
 
 ```mermaid
 graph TD
-    subgraph S_Challenge ["复杂 C 库移植四大拦路虎"]
+    subgraph S_Challenge ["C 库移植常见问题"]
         C_Cfg["1. 平台检测配置头<br/>(config.h.in / 宏探测)"]
         C_Src["2. 条件编译源文件裁剪<br/>(POSIX vs Windows 平台分支)"]
         C_Tls["3. 第三方系统库链接<br/>(OpenSSL / Schannel / 平台依赖)"]
@@ -129,4 +129,4 @@ b.installArtifact(lib);
 
 ## 3. 经验总结
 
-移植复杂 C 库的核心在于**充分信任并利用 Zig 构建系统的声明式表达力**。通过将庞杂的 CMakeLists.txt 转化为结构清晰的 `build.zig`，不仅构建速度获得数倍提升，更能使该 C 库瞬间获得“零依赖跨平台交叉编译”的超级能力！
+移植 C 库的关键在于理清源码结构、配置宏生成逻辑以及依赖关系。将 CMakeLists.txt 转写为 `build.zig` 后，可以在不依赖额外构建工具（如 CMake、Make）的前提下，实现统一的跨平台交叉编译与分发。

@@ -1,16 +1,16 @@
 # Zig 构建系统的哲学与愿景
 
-Zig 对构建系统的定位，并不只是为 Zig 语言提供一个编译器调用器，而是旨在**彻底解决现代系统级工程软件的交付难题**。
+Zig 构建系统的定位不只是调用编译器，还将 C/C++ 交叉编译、任务图编排与包管理整合在统一的接口下。
 
 ---
 
-## 1. 拒绝 DSL：用真正的编程语言写构建脚本
+## 1. 拒绝专用 DSL：直接使用 Zig 编写构建脚本
 
-软件工程界曾长期流行一种假设：“构建系统应该使用专用的领域特定语言（DSL）”。然而事实证明，随着项目规模扩大，构建逻辑必然会需要循环、条件分支、字符串处理、网络请求、模板替换甚至并发任务管理——专用的 DSL 最终要么退化为一门功能残缺、语法怪异的图灵完备编程语言（如 CMake），要么迫使开发者退回到 Shell 脚本的怀抱。
+很多构建工具选择引入专用的领域特定语言（DSL）。但随着构建逻辑变得复杂（例如需要循环处理文件、条件判断、动态生成配置或调用外部命令），专用 DSL 往往需要不断扩充语法，或者退回依赖 Shell 脚本。
 
 ```mermaid
 graph TD
-    subgraph S_Trad ["传统模式：多语言割裂"]
+    subgraph S_Trad ["传统模式：多语言与工具混用"]
         T_DSL["CMakeLists.txt (专用 DSL)"]
         T_Shell["build.sh / setup.bat (宿主 Shell)"]
         T_Src["main.c / lib.cpp (业务代码)"]
@@ -18,9 +18,9 @@ graph TD
         T_Shell -. "编译" .-> T_Src
     end
 
-    subgraph S_Zig ["Zig 模式：单一语言闭环"]
+    subgraph S_Zig ["Zig 模式：单一语言表达"]
         Z_Build["build.zig (标准 Zig 语言)"]
-        Z_API["std.Build (标准库构建图 API)"]
+        Z_API["std.Build (构建图 API)"]
         Z_Src["main.zig / c_code.c (业务代码)"]
         Z_Build -- "使用" --> Z_API
         Z_API -- "驱动编译与代码生成" --> Z_Src
@@ -37,34 +37,34 @@ graph TD
     style Z_Src fill:#f8f9fa,stroke:#495057,stroke-width:2px;
 ```
 
-Zig 的原则极其坚定：**No DSL, Just Zig**。
-1. **静态类型与自动补全**：编写 `build.zig` 时，享受与编写普通 Zig 业务代码完全一致的 LSP（Zig Language Server）支持、类型推导、编译期错误检查与重构体验；
-2. **复用标准库能力**：无需外部工具，即可直接使用 `std.fs`、`std.mem`、`std.crypto`、`std.fmt` 等丰富而高效的标准库能力；
-3. **零学习迁移负担**：学会了 Zig 语法，就已经掌握了编写构建脚本的基础语言工具。
+Zig 的策略是直接使用普通 Zig 源码编写构建脚本（`build.zig`）：
+1. **静态类型与语言服务支持**：编写 `build.zig` 时，可以享受与普通 Zig 源码相同的语法检查、自动补全和重构提示；
+2. **复用标准库**：可以直接调用 `std.fs`、`std.mem`、`std.fmt` 等标准库功能处理路径与文本；
+3. **无需学习额外语法**：熟悉 Zig 基础语法后，即可阅读和编写构建脚本。
 
 ---
 
-## 2. 编译器、链接器与构建系统的“三位一体”
+## 2. 编译器、链接器与构建系统的集成
 
-传统语言的构建工具（如 Cargo、CMake、Make）通常是外围独立的包裹层（Wrapper），其自身不具备编译 C 代码或链接二进制的能力，必须不断向操作系统“向外索求”。
+传统构建工具通常是外围独立的调用程序，不直接具备编译 C 代码或链接二进制的能力，需要依赖宿主环境已安装的编译器。
 
-而 Zig 的设计理念是**“全栈内嵌、自成宇宙”**：
+Zig 则将编译器、汇编器、链接器以及跨平台 libc 符号表打包在一个二进制分发中：
 
 ```mermaid
 graph TD
-    subgraph S_ZigDist ["Zig 单体分发包 (单个二进制包含一切)"]
+    subgraph S_ZigDist ["Zig 单体发行版"]
         Z_Frontend["Zig 编译器前端与标准库"]
-        Z_Clang["内嵌 Clang C/C++ 编译器 (静态集成)"]
+        Z_Clang["内嵌 Clang 编译器 (静态集成)"]
         Z_LLD["内嵌 LLD 链接器 (静态集成)"]
         Z_Libc["全平台 libc 符号表与头文件 (glibc / musl / mingw)"]
-        Z_Engine["std.Build 并发构建图引擎"]
+        Z_Engine["std.Build 构建图引擎"]
     end
 
-    subgraph S_Targets ["目标平台 (无需任何外部环境)"]
+    subgraph S_Targets ["目标平台"]
         T1["Linux (x86_64 / aarch64 / riscv64)"]
         T2["macOS (Apple Silicon / Intel)"]
-        T3["Windows (MSVC / GNU MinGW)"]
-        T4["WebAssembly / 嵌入式裸机"]
+        T3["Windows (MSVC / MinGW)"]
+        T4["WebAssembly / 裸机"]
     end
 
     Z_Engine --> Z_Frontend
@@ -73,10 +73,10 @@ graph TD
     Z_Frontend --> Z_Libc
     Z_Clang --> Z_Libc
 
-    Z_LLD -- "直接输出目标二进制" --> T1
-    Z_LLD -- "直接输出目标二进制" --> T2
-    Z_LLD -- "直接输出目标二进制" --> T3
-    Z_LLD -- "直接输出目标二进制" --> T4
+    Z_LLD -- "输出目标二进制" --> T1
+    Z_LLD -- "输出目标二进制" --> T2
+    Z_LLD -- "输出目标二进制" --> T3
+    Z_LLD -- "输出目标二进制" --> T4
 
     classDef default fill:#f8f9fa,stroke:#495057;
     style S_ZigDist fill:#e6f3ff,stroke:#0066cc,stroke-width:2px;
@@ -92,32 +92,28 @@ graph TD
     style T4 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
 ```
 
-这带来了革命性的工程优势：
-- **真正的自包含（Self-Contained）**：下载一个 50MB~80MB 的 `zig` 压缩包，你就同时拥有了 Zig 编译器、C/C++ 交叉编译器、汇编器、链接器以及全套跨平台 libc 头文件；
-- **消除外部系统依赖**：无论宿主机是 Ubuntu、macOS 还是 Windows，只要执行 `zig build -Dtarget=x86_64-windows`，就能直接产出合规的 Windows `.exe` 或 `.lib`，不需要预装 Wine、MinGW 或 Windows SDK。
+这种集成带来的特点包括：
+- **自包含（Self-Contained）**：单个 `zig` 二进制包含 Zig 编译器、Clang、LLD 以及常见的跨平台 libc 头文件与符号；
+- **减少外部环境依赖**：不论宿主机是 Linux、macOS 还是 Windows，只要指定 `-Dtarget=x86_64-windows`，即可直接交叉编译生成 Windows 目标产物，不需要在宿主机额外配置交叉工具链。
 
 ---
 
 ## 3. 声明式计算图模型
 
-虽然 `build.zig` 是一段命令式的 Zig 代码，但它的执行目的却极其纯粹——**在内存中组装一张纯粹的声明式有向无环图（DAG）**。
-
 在 `build(b: *std.Build)` 函数中：
-- 你调用的每一个 API（如 `b.addExecutable`、`b.addConfigHeader`），都不是立即执行编译或生成文件；
-- 它们只是在堆内存中实例化一个个节点（`std.Build.Step`），并把节点间的数据依赖关系（`LazyPath`）连接成边；
-- 组装完成后，真正的执行阶段由 Zig 的多线程并发引擎根据目标 Step 驱动运行。
+- 调用的构建 API（如 `b.addExecutable`、`b.addConfigHeader`）并不立即触发编译或写入中间文件；
+- 这些调用在内存中创建任务节点（`std.Build.Step`），并记录输入输出路径（`LazyPath`）；
+- 图构建完成后，由调度器根据目标 Step 驱动执行。
 
-这种模型将“图的定义”与“图的执行”彻底解耦，为极速并行调度与精确缓存命中奠定了坚实的基础。
+这种模型将“图的声明”与“图的执行”分开，为并行调度和增量缓存提供了基础。
 
 ---
 
-## 4. 内容寻址与确定性缓存
+## 4. 基于内容的增量缓存
 
-在传统构建工具中，`make clean` 是开发者最频繁使用的保命命令——因为一旦缓存判定失效，旧的目标文件就会导致链接诡异报错。
+传统构建工具常依赖文件修改时间（`mtime`）判断是否重编，若编译参数或环境变化，容易漏编或需要频繁手动 clean。
 
-Zig 构建系统建立在**内容寻址（Content-Addressed）**和**全输入哈希指纹**之上：
-- 文件的变动不依赖不可靠的时间戳，而是输入内容的哈希摘要；
-- 编译参数（优化级别、目标架构、预处理宏定义）、编译器版本甚至操作系统环境都会计入 Manifest Hash；
-- 只要输入发生哪怕 1 字节的变化，或者命令行改动了一个选项，对应的子图节点立即失效重编；而只要输入未变，命中率达到 100%。
-
-在工程实践中，使用 Zig 构建几乎**不需要执行任何类似 `clean` 的操作**，即可保证构建结果的绝对正确与确定性。
+Zig 构建系统采用基于内容哈希的缓存策略：
+- 对源文件内容、编译参数（优化级别、目标架构、预处理宏等）和工具链信息计算哈希签名（Manifest Hash）；
+- 输入和参数一致时，复用缓存产物；输入发生变动时，仅重新构建受影响的节点；
+- 避免了因时间戳未变或参数变化导致的缓存不一致问题。

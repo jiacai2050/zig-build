@@ -1,6 +1,6 @@
 # 实战二：Zig 与 C/C++ 混合编程工程结构
 
-在工业级系统研发中，很少有完全“绿地开发”的场景。更多时候我们需要在现有 C/C++ 代码库的基础上使用 Zig 进行渐进式重构或功能扩展。
+在实际开发中，常常需要在现有 C/C++ 代码库的基础上集成 Zig，或者使用 Zig 逐步替换旧模块。
 
 ---
 
@@ -30,7 +30,7 @@ graph TD
         H_C -. "二进制符号链接" .-> H_Zig
     end
 
-    subgraph S_Auto ["方式 B：addTranslateC 自动转译 (推荐，无维护成本)"]
+    subgraph S_Auto ["方式 B：addTranslateC 自动转译 (适合多数接口场景)"]
         A_H["native_math.h"]
         A_TC["b.addTranslateC()"]
         A_Mod["自动生成 Zig 类型与函数 Module"]
@@ -102,7 +102,7 @@ pub fn build(b: *std.Build) void {
 
 ## 4. 业务代码调用（`src/main.zig`）
 
-在 `main.zig` 中，无需手写任何 C 结构体或函数原型映射，直接享受强类型智能提示：
+在 `main.zig` 中，直接导入转译后的模块即可调用 C 函数：
 
 ```zig
 const std = @import("std");
@@ -114,4 +114,5 @@ pub fn main() void {
     std.debug.print("Computed from C: {}\n", .{sum});
 }
 ```
-整个流程由 Zig 内置的 Clang 与 LLD 全自动并发编译与链接，无论是 Linux、macOS 还是 Windows，均可直接一条命令完成构建。
+
+编译时由 Zig 内置的 Clang 和 LLD 处理 C 源码与目标文件链接，跨平台保持统一的构建命令。

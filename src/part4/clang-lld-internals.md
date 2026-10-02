@@ -1,8 +1,6 @@
 # 内置 C 工具链：嵌入式 Clang 与 LLD 桥接
 
-在系统级构建中，最令人惊叹的特性之一是：**只要你安装了 Zig，你就拥有了一个完全自包含、能够无痛交叉编译 C/C++ 代码的完整工业级编译器工具链**。
-
-这一神奇能力的底层秘密，正是 Zig 源码中对 Clang 编译器与 LLD 链接器的深度内嵌。
+Zig 编译器内置了 Clang 和 LLD，因此无需在宿主机额外安装外部交叉编译工具链即可支持 C/C++ 源码的编译与链接。这一机制依赖于 Zig 对 Clang 前端与 LLD 链接器的静态内嵌与 FFI 调用。
 
 ---
 
@@ -77,7 +75,7 @@ extern "C" int ZigClang_main(int argc, char **argv) {
 }
 ```
 
-当 `zig clang` 命令被触发时，Zig 根本不会在外部磁盘上去寻找 `clang` 可执行文件，而是通过 `ZigClang_main` 直接调用已经驻留在当前进程内存中的 Clang 前端引擎！
+当 `zig clang` 命令被触发时，Zig 并不会调用外部系统的 `clang` 可执行文件，而是通过 `ZigClang_main` 直接调用内嵌在当前进程中的 Clang 前端引擎。
 
 ---
 
@@ -98,13 +96,13 @@ for (comp.c_object_table.keys()) |c_object| {
 
 ---
 
-## 4. 为什么 Zig 与 Clang 编译出的 `.o` 能够完美无缝合并？
+## 4. Zig 与 C 目标文件的链接兼容性
 
-很多混合编程语言在链接外部 C 目标文件时都需要编写胶水层转换，为什么 Zig 可以直接链接？
+Zig 生成的目标文件与 Clang 编译出的 C 目标文件之所以能直接合并，原因包括：
 
 1. **完全一致的 ABI 遵循**：
    Zig 的函数调用约定原生对齐各大操作系统的标准 C ABI（如 Linux x86_64 的 System V AMD64 ABI，Windows 的 MSVC x64 ABI，以及 ARM 的 AAPCS64）；
 2. **完全同构的目标文件格式**：
-   Zig 生成的 `main_zcu.o` 与 Clang 编译出的 `c_lib.o` 在结构上没有任何区别——它们都符合标准 ELF、Mach-O 或 COFF 规范，拥有标准的 `.text` 指令段、`.data` 数据段以及重定位符号表；
+   Zig 生成的 `main_zcu.o` 与 Clang 编译出的 `c_lib.o` 在结构上没有区别——它们都符合标准 ELF、Mach-O 或 COFF 规范，拥有标准的 `.text` 指令段、`.data` 数据段以及重定位符号表；
 3. **内嵌 LLD 链接器统一处理**：
-   Zig 内嵌的 LLD 链接器在最终阶段将 Zig 目标文件与 C 目标文件一视同仁，统一执行符号解析与地址重定位，直接输出单一的精炼二进制。
+   Zig 内嵌的 LLD 链接器统一完成符号解析与地址重定位，直接输出可执行文件或库文件。

@@ -1,12 +1,12 @@
 # 编译器交接：Step.Compile 到子进程拼装
 
-在构建执行期，最重要也是最消耗 CPU 资源的节点莫过于负责编译的 `Step.Compile`。它是如何将构建脚本中的高层配置转化为具体的编译器调用的？
+`Step.Compile` 负责将构建脚本中的高层配置（源码文件、模块树、编译选项、C 头文件路径等）转换为编译器 CLI 参数，并通过子进程调用底层编译器。
 
 ---
 
 ## 1. 核心流程：参数序列化与子进程派生
 
-当调度线程池运转到某个未命中的 `Step.Compile` 节点时，触发其内部的 `makeFn`（即 `Step.Compile.make`）：
+当调度线程池处理未命中的 `Step.Compile` 节点时，会调用其内部的 `make` 方法（`Step.Compile.make`）：
 
 ```mermaid
 graph LR
@@ -39,7 +39,7 @@ graph LR
 
 ---
 
-## 2. 源码深度剖析：`getZigArgs()`
+## 2. 核心机制：`getZigArgs()`
 
 在 [lib/std/Build/Step/Compile.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/lib/std/Build/Step/Compile.zig) 中，`Step.Compile.make()` 首先调用 `getZigArgs()`：
 
@@ -58,7 +58,7 @@ graph LR
    - `-DNAME=VALUE`：注入预处理宏；
    - 将绑定的所有 `.c`、`.cpp` 文件路径追加到命令行尾部。
 
-### 实战还原：底层 CLI 命令示例
+### 底层 CLI 命令示例
 
 对于一个同时包含 Zig 源码、子模块与 C 语言文件的项目，`getZigArgs()` 组装出的最终命令行大致如下：
 
@@ -79,4 +79,4 @@ zig build-exe \
 
 随后，[lib/std/Build/Step.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/lib/std/Build/Step.zig) 中的 `step.evalZigProcess` 通过 IPC 管道启动 `zig` 编译器主进程执行实际编译。
 
-这种“高层构建系统向低层编译器下发标准化 CLI 命令”的设计，不仅使构建运行器与编译器实现逻辑解耦，也使得任何编译故障都可以直接通过纯终端命令行独立重现与调试。
+通过下发标准化 CLI 参数调用编译器，构建运行器与编译器实现解耦。当构建出现问题时，开发者也可以直接复制对应命令在终端独立复现与排查。

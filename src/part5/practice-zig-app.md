@@ -78,12 +78,12 @@ pub fn build(b: *std.Build) void {
 
 ---
 
-## 3. 核心设计亮点分析
+## 3. 关键设计说明
 
-1. **库与 CLI 解耦**：通过创建 `lib_mod`，核心业务逻辑可以同时被 `main.zig` 消费，也可以方便地以库的形式被其他外部项目引入；
-2. **命令行参数无缝转发**：通过 `if (b.args) |args| run_cmd.addArgs(args);`，终端用户可以直接运行：
+1. **库与 CLI 解耦**：通过创建 `lib_mod`，核心业务逻辑可以同时被 `main.zig` 消费，也可以作为库被其他项目依赖；
+2. **命令行参数转发**：通过 `if (b.args) |args| run_cmd.addArgs(args);`，终端用户可以直接运行：
    ```bash
    zig build run -- --version
    zig build run -- process input.txt --output result.json
    ```
-   所有在 `--` 之后的参数都会透明传递给目标应用程序的 `main` 函数。
+   所有在 `--` 之后的参数都会直接传递给目标应用程序的 `main` 函数。

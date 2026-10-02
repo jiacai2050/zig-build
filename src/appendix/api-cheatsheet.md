@@ -36,7 +36,7 @@
 | `mod.addCSourceFiles(.{ ... })` | 批量挂载 C/C++ 源文件列表 |
 | `mod.addIncludePath(lazy_path)` | 追加头文件包含路径（`-I`） |
 | `mod.addSystemIncludePath(lazy_path)`| 追加系统级头文件包含路径（`-isystem`） |
-| `mod.linkLibrary(artifact)` | 链接静态库/动态库，并**自动继承传播其头文件包含路径** |
+| `mod.linkLibrary(artifact)` | 链接静态库或动态库，并自动继承其导出的头文件包含路径 |
 
 ---
 
