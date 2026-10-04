@@ -2,6 +2,14 @@
 
 在实际开发中，常常需要在现有 C/C++ 代码库的基础上集成 Zig，或者使用 Zig 逐步替换旧模块。
 
+> 💡 **配套可运行示例**
+> 本章对应的完整独立工程代码位于 GitHub：[`examples/02-mixed-c-zig`](https://github.com/jiacai2050/x/tree/main/zig-build/examples/02-mixed-c-zig)。
+> 你可以进入该目录并通过以下命令体验 Zig 与 C 混合编译及头文件自动转译：
+> ```bash
+> cd examples/02-mixed-c-zig
+> zig build run
+> ```
+
 ---
 
 ## 1. 混合工程标准目录
@@ -40,15 +48,15 @@ graph TD
         A_Mod --> A_Main
     end
 
-    classDef default fill:#f8f9fa,stroke:#495057;
-    style S_Hand fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style S_Auto fill:#e6f3ff,stroke:#0066cc,stroke-width:2px;
-    style H_C fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style H_Zig fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
-    style A_H fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style A_TC fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style A_Mod fill:#e6ffe6,stroke:#009900,stroke-width:2px;
-    style A_Main fill:#f8f9fa,stroke:#495057,stroke-width:2px;
+    classDef default stroke:#495057;
+    style S_Hand stroke:#ff9900,stroke-width:2px;
+    style S_Auto stroke:#0066cc,stroke-width:2px;
+    style H_C stroke:#ff9900,stroke-width:2px;
+    style H_Zig stroke:#ffc107,stroke-width:2px;
+    style A_H stroke:#ff9900,stroke-width:2px;
+    style A_TC stroke:#0066cc,stroke-width:2px;
+    style A_Mod stroke:#009900,stroke-width:2px;
+    style A_Main stroke:#495057,stroke-width:2px;
 ```
 
 ---
@@ -116,3 +124,16 @@ pub fn main() void {
 ```
 
 编译时由 Zig 内置的 Clang 和 LLD 处理 C 源码与目标文件链接，跨平台保持统一的构建命令。
+
+---
+
+## 5. 注意事项与进阶要点
+
+1. **混编 C++ 源码时调用 `linkLibCpp()`**：
+   若工程中混编了 `.cpp` 源文件，仅开启 `.link_libc = true` 会在链接阶段报缺失 C++ 运行时符号（如 `operator new`）。此时需在模块上调用：
+   ```zig
+   exe_module.linkLibCpp();
+   ```
+   Zig 会自动链接目标平台对应的 C++ 标准库；
+2. **C 头文件中的 `static inline` 函数**：
+   对于简单的 `static inline` 函数，`translate-c` 可以自动转译为 Zig 内联函数。若函数体内使用了未受支持的编译器扩展宏或内联汇编，转译可能会报错。此时建议在 `.c` 文件中将其重新封装为常规的 `extern` 函数。

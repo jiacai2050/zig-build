@@ -27,14 +27,14 @@ graph LR
     S_Opts --> G_Args
     G_Args --> E_Proc
 
-    classDef default fill:#f8f9fa,stroke:#495057;
-    style Step_State fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style Serializer fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style Spawn_Proc fill:#e6ffe6,stroke:#009900,stroke-width:2px;
-    style S_Mod fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style S_Opts fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style G_Args fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style E_Proc fill:#e6ffe6,stroke:#009900,stroke-width:2px;
+    classDef default stroke:#495057;
+    style Step_State stroke:#ff9900,stroke-width:2px;
+    style Serializer stroke:#0066cc,stroke-width:2px;
+    style Spawn_Proc stroke:#009900,stroke-width:2px;
+    style S_Mod stroke:#ff9900,stroke-width:2px;
+    style S_Opts stroke:#ff9900,stroke-width:2px;
+    style G_Args stroke:#0066cc,stroke-width:2px;
+    style E_Proc stroke:#009900,stroke-width:2px;
 ```
 
 ---
@@ -80,3 +80,20 @@ zig build-exe \
 随后，[lib/std/Build/Step.zig](https://codeberg.org/ziglang/zig/src/tag/0.16.0/lib/std/Build/Step.zig) 中的 `step.evalZigProcess` 通过 IPC 管道启动 `zig` 编译器主进程执行实际编译。
 
 通过下发标准化 CLI 参数调用编译器，构建运行器与编译器实现解耦。当构建出现问题时，开发者也可以直接复制对应命令在终端独立复现与排查。
+
+---
+
+## 3. 编译器解耦机制与代价
+
+### 3.1 进程解耦与命令可复现性
+
+构建运行器与编译器之间采用子进程与 CLI 参数交互：
+- **独立的状态空间**：运行器负责推导构建参数，实际编译由独立的子进程执行，避免了在同一个进程中长期驻留可能带来的状态污染；
+- **便于独立复现**：执行 `zig build --verbose` 时，终端会打印底层拼装好的完整命令。开发者可以直接复制该命令在命令行中单独执行与排查。
+
+### 3.2 局限与不足
+
+1. **子进程开销与命令行长度**：
+   在 Linux 上派生子进程较为轻量，但在 Windows 平台上频繁创建进程会有更多开销。同时，当工程包含大量 C 源码与搜索路径时，命令参数较长，需要依赖参数文件（Response File）机制中转；
+2. **默认日志输出折叠较深**：
+   未指定 `--verbose` 时，终端默认折叠了子进程的执行命令。当 C 源码出现复杂的预处理警告或头文件搜寻冲突时，精简的界面容易掩盖关键信息，排查时通常需要额外开启详细日志。

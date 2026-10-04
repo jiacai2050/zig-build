@@ -27,14 +27,14 @@ graph LR
     G2_Auto -- "跨平台抽象" --> G2_CMake
     G2_CMake -- "调度性能优化" --> G3_Ninja
 
-    classDef default fill:#f8f9fa,stroke:#495057;
-    style S_Gen1 fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style S_Gen2 fill:#e6f3ff,stroke:#0066cc,stroke-width:2px;
-    style S_Gen3 fill:#e6ffe6,stroke:#009900,stroke-width:2px;
-    style G1_Make fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style G2_Auto fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style G2_CMake fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style G3_Ninja fill:#e6ffe6,stroke:#009900,stroke-width:2px;
+    classDef default stroke:#495057;
+    style S_Gen1 stroke:#ff9900,stroke-width:2px;
+    style S_Gen2 stroke:#0066cc,stroke-width:2px;
+    style S_Gen3 stroke:#009900,stroke-width:2px;
+    style G1_Make stroke:#ff9900,stroke-width:2px;
+    style G2_Auto stroke:#0066cc,stroke-width:2px;
+    style G2_CMake stroke:#0066cc,stroke-width:2px;
+    style G3_Ninja stroke:#009900,stroke-width:2px;
 ```
 
 ### 1.1 Make 与时间戳判定
@@ -75,15 +75,15 @@ graph TD
         G_Cgo --> G_Ext
     end
 
-    classDef default fill:#f8f9fa,stroke:#495057;
-    style S_Rust fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style S_Go fill:#e6f3ff,stroke:#0066cc,stroke-width:2px;
-    style R_Cargo fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style R_Script fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style R_Ext fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style G_Go fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style G_Cgo fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
-    style G_Ext fill:#f8f9fa,stroke:#495057,stroke-width:2px;
+    classDef default stroke:#495057;
+    style S_Rust stroke:#ff9900,stroke-width:2px;
+    style S_Go stroke:#0066cc,stroke-width:2px;
+    style R_Cargo stroke:#ff9900,stroke-width:2px;
+    style R_Script stroke:#0066cc,stroke-width:2px;
+    style R_Ext stroke:#495057,stroke-width:2px;
+    style G_Go stroke:#0066cc,stroke-width:2px;
+    style G_Cgo stroke:#ffc107,stroke-width:2px;
+    style G_Ext stroke:#495057,stroke-width:2px;
 ```
 
 然而涉及 C/C++ 依赖时，仍存在工具链边界：
@@ -103,12 +103,14 @@ graph TD
    不同目标架构与操作系统（如 Linux aarch64、Windows x86_64、macOS）需要分别配置不同的编译器套件；
 2. **目标平台头文件与 libc 缺失**：
    编译 C 程序需要目标系统对应的 C 标准库（glibc / musl / MSVCRT）符号和头文件，在 CI 环境中配置 sysroot 往往需要额外脚本；
-3. **Toolchain 配置文件复杂**：
+3. **动态链接与 glibc 版本不匹配（glibc Version Mismatch）**：
+   在 Linux 平台交叉编译或发布动态链接二进制时，若宿主机的 glibc 版本较新，编译出的程序部署到旧版系统（如仍运行旧发行版的生产服务器）时，常会遇到 `version 'GLIBC_2.XX' not found` 错误。传统做法通常是在旧版系统容器中编译，或单独准备一套旧版 glibc 的 sysroot。
+4. **Toolchain 配置文件复杂**：
    在 CMake 等工具中交叉编译时，通常需要编写包含路径重定向的 `toolchain.cmake`，配置不当容易误引入宿主系统的头文件和动态库。
 
 ---
 
-## 4. 总结：系统级构建的常见诉求
+## 4. 总结：系统级构建的权衡与诉求
 
 对比不同构建工具的实现策略：
 
@@ -120,4 +122,4 @@ graph TD
 | **构建图模型** | 规则展开 | 过程式脚本 | 显式声明的有向无环图 (DAG) |
 | **缓存策略** | 基于文件 mtime | 基于内容哈希 (仅限 Rust) | 基于内容哈希与环境参数比对 |
 
-下一章将介绍 Zig 构建系统的具体设计哲学与实现思路。
+不过，将编译器、链接器和 libc 符号整合进同一个工具链中，也会增加分发包的体积和维护成本。下一章将介绍 Zig 构建系统的设计哲学与具体的权衡取舍。

@@ -4,6 +4,14 @@
 
 本章以开源项目 [zig-mariadb-connector](https://github.com/jiacai2050/zig-mariadb-connector) 为例，梳理移植成熟 C 库到 Zig 构建系统的实践流程。关于社区常用 C 库的封装案例，也可以参考 [All Your Codebase](https://github.com/allyourcodebase/)。
 
+> 💡 **配套可运行示例**
+> 本章除了以真实开源库 [zig-mariadb-connector](https://github.com/jiacai2050/zig-mariadb-connector) 展开架构分析外，还在配套代码中提供了一个自包含、免外部网络依赖的 C 静态库封装与测试工程：[`examples/04-c-library-port`](https://github.com/jiacai2050/x/tree/main/zig-build/examples/04-c-library-port)。
+> 你可以进入该目录运行测试：
+> ```bash
+> cd examples/04-c-library-port
+> zig build test
+> ```
+
 ---
 
 ## 1. 移植面临的核心挑战
@@ -19,12 +27,12 @@ graph TD
         C_Exp["4. 头文件树与产物规范导出<br/>(供下游纯 Zig / C 顺畅消费)"]
     end
 
-    classDef default fill:#f8f9fa,stroke:#495057;
-    style S_Challenge fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style C_Cfg fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style C_Src fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style C_Tls fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style C_Exp fill:#e6ffe6,stroke:#009900,stroke-width:2px;
+    classDef default stroke:#495057;
+    style S_Challenge stroke:#ff9900,stroke-width:2px;
+    style C_Cfg stroke:#0066cc,stroke-width:2px;
+    style C_Src stroke:#0066cc,stroke-width:2px;
+    style C_Tls stroke:#0066cc,stroke-width:2px;
+    style C_Exp stroke:#009900,stroke-width:2px;
 ```
 
 ---
@@ -127,6 +135,23 @@ b.installArtifact(lib);
 
 ---
 
-## 3. 经验总结
+## 3. 移植要点与维护权衡
 
-移植 C 库的关键在于理清源码结构、配置宏生成逻辑以及依赖关系。将 CMakeLists.txt 转写为 `build.zig` 后，可以在不依赖额外构建工具（如 CMake、Make）的前提下，实现统一的跨平台交叉编译与分发。
+### 3.1 平台系统库链接
+
+移植 C 库时，不同操作系统通常需要链接不同的底层系统库：
+- **Windows 系统库**：涉及网络和加密时，通常需要链接 Winsock 与安全子系统：
+  ```zig
+  if (target_is_windows) {
+      lib.linkSystemLibrary("ws2_32");
+      lib.linkSystemLibrary("advapi32");
+      lib.linkSystemLibrary("crypt32");
+  }
+  ```
+- **POSIX 系统库**：在部分 Linux/BSD 环境下可能需要链接 `libpthread` 或 `libdl`。若通过 Zig 交叉编译，这些基础 libc 符号由内嵌环境统一管理。
+
+### 3.2 上游变更的维护成本
+
+用 `build.zig` 替代 CMake 虽然减少了对外部工具链的依赖，但也需要承担后续的同步成本：
+- **缺乏自动化转写工具**：目前没有通用工具能够直接将复杂的 `CMakeLists.txt` 转换为 `build.zig`，源文件整理与宏配置主要依靠人工梳理；
+- **上游版本同步成本**：当上游发布新版本并修改了源文件列表、宏名称或编译选项时，维护者需要比对上游 CMake 的变更并手动同步到 `build.zig`。对于频繁更新的大型项目，需要考虑这部分维护开销。

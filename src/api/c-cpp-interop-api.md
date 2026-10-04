@@ -2,6 +2,9 @@
 
 Zig 在语言层面支持 C ABI，并在构建系统中提供了头文件转译和包含路径传播机制。
 
+> 💡 **配套可运行示例**
+> 关于 C/C++ 源码混合编译与 `addTranslateC` 的完整工程实现，可参考 GitHub 示例：[`examples/02-mixed-c-zig`](https://github.com/jiacai2050/x/tree/main/zig-build/examples/02-mixed-c-zig)，以及后续实战章节 [实战二：Zig 与 C/C++ 混合编程工程结构](../practices/practice-mixed-c-zig.md)。
+
 ---
 
 ## 1. 显式头文件转译：`b.addTranslateC`
@@ -23,13 +26,13 @@ graph LR
     Mod --> Exe
     Exe --> Code
 
-    classDef default fill:#f8f9fa,stroke:#495057;
-    style H_File fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style TC_Step fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style Z_AST fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
-    style Mod fill:#e6ffe6,stroke:#009900,stroke-width:2px;
-    style Exe fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style Code fill:#f8f9fa,stroke:#495057,stroke-width:2px;
+    classDef default stroke:#495057;
+    style H_File stroke:#ff9900,stroke-width:2px;
+    style TC_Step stroke:#0066cc,stroke-width:2px;
+    style Z_AST stroke:#ffc107,stroke-width:2px;
+    style Mod stroke:#009900,stroke-width:2px;
+    style Exe stroke:#495057,stroke-width:2px;
+    style Code stroke:#495057,stroke-width:2px;
 ```
 
 ### 使用范式：
@@ -136,3 +139,20 @@ exe.root_module.linkLibrary(lib_artifact);
 ```
 
 > **注意**：`addTranslateC` 仅生成符号声明（`extern fn`）。如果只添加了模块导入而未通过 `linkLibrary` 链接静态库，链接阶段会报符号未定义错误（`undefined reference`）。
+
+---
+
+## 4. C 互操作的优势与限制
+
+### 4.1 包含路径传播与转译缓存
+
+Zig 在处理 C 代码互操作时有以下机制：
+- **包含树自动传播**：调用 `exe.root_module.linkLibrary(foo_lib)` 时，构建系统会自动将 `foo_lib` 导出的头文件路径追加到当前模块中，减少了重复配置搜索路径的负担；
+- **转译结果独立缓存**：`addTranslateC` 作为独立的 Step 节点运行，转译生成的 Zig AST 享受构建系统的哈希缓存，避免了每次构建重复解析大型 C 头文件。
+
+### 4.2 局限与不足
+
+1. **复杂宏转译受限**：
+   C 预处理器基于文本替换，而 Zig 语法要求严格的静态类型。当 C 头文件中包含复杂变参宏、GCC 语句表达式扩展 `({ ... })` 或指针操作宏时，`translate-c` 往往无法自动生成对应的 Zig 代码，而是输出 `@compileError("unable to translate macro: ...")`。遇到此类宏时，通常需要编写 `shim.h` 过滤或手动补充 Zig 接口声明；
+2. **不支持转译 C++ 头文件**：
+   虽然 Zig 内置的 Clang 可以编译 `.cpp` 源文件，但 `addTranslateC` **不支持 C++ 头文件**（无法解析类结构、模板、重载等特性）。在 Zig 中使用 C++ 库时，仍需在 C++ 侧编写基于 `extern "C"` 的纯 C ABI 包装层。

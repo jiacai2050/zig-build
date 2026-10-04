@@ -1,22 +1,23 @@
 [book]
 authors = ["jiacai2050"]
-description = "Zig 构建系统权威指南：来龙去脉、核心概念、API 实战与底层运行机制"
+description = "Zig 构建系统指南：来龙去脉、核心概念、API 实战与底层运行机制"
 language = "zh-CN"
 src = "src"
-title = "Zig 构建系统权威指南"
+title = "Zig 构建系统指南"
 
 [build]
 build-dir = "book"
 create-missing = false
 
 [output.html]
-git-repository-url = "https://github.com/jiacai2050/zig-build"
+git-repository-url = "https://github.com/jiacai2050/x/tree/main/zig-build"
 git-repository-icon = "fab-github"
+edit-url-template = "https://github.com/jiacai2050/x/blob/main/zig-build/{path}"
 default-theme = "light"
 preferred-dark-theme = "navy"
 no-section-label = false
-site-url = "/zig-build/"
-additional-js = ["static/mermaid.min.js", "static/mermaid-init.js"]
+site-url = "/x/zig-build/"
+additional-js = ["static/mermaid-init.js"]
 
 [output.html.search]
 enable = true

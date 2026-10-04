@@ -33,24 +33,24 @@ graph TD
         Link_Z --> Bin_Z["最终可执行文件"]
     end
 
-    classDef default fill:#f8f9fa,stroke:#495057;
-    style S_C fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style S_Zig fill:#e6f3ff,stroke:#0066cc,stroke-width:2px;
-    style C1 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style C2 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style C3 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style O1 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style O2 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style O3 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style Link_C fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style Bin_C fill:#e6ffe6,stroke:#009900,stroke-width:2px;
-    style Z1 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style Z2 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style Z3 fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style ZCU fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style Obj_Zig fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
-    style Link_Z fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style Bin_Z fill:#e6ffe6,stroke:#009900,stroke-width:2px;
+    classDef default stroke:#495057;
+    style S_C stroke:#ff9900,stroke-width:2px;
+    style S_Zig stroke:#0066cc,stroke-width:2px;
+    style C1 stroke:#495057,stroke-width:2px;
+    style C2 stroke:#495057,stroke-width:2px;
+    style C3 stroke:#495057,stroke-width:2px;
+    style O1 stroke:#495057,stroke-width:2px;
+    style O2 stroke:#495057,stroke-width:2px;
+    style O3 stroke:#495057,stroke-width:2px;
+    style Link_C stroke:#0066cc,stroke-width:2px;
+    style Bin_C stroke:#009900,stroke-width:2px;
+    style Z1 stroke:#495057,stroke-width:2px;
+    style Z2 stroke:#495057,stroke-width:2px;
+    style Z3 stroke:#495057,stroke-width:2px;
+    style ZCU stroke:#0066cc,stroke-width:2px;
+    style Obj_Zig stroke:#ffc107,stroke-width:2px;
+    style Link_Z stroke:#0066cc,stroke-width:2px;
+    style Bin_Z stroke:#009900,stroke-width:2px;
 ```
 
 ### 为什么 Zig 采用类似 Unity Build 的 ZCU 模型？
@@ -88,18 +88,18 @@ graph LR
         BE_LLVM --> Obj
     end
 
-    classDef default fill:#f8f9fa,stroke:#495057;
-    style S_Front fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style S_Sema fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
-    style S_Back fill:#e6ffe6,stroke:#009900,stroke-width:2px;
-    style Src fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style AST fill:#f8f9fa,stroke:#495057,stroke-width:2px;
-    style ZIR fill:#fff0e6,stroke:#ff9900,stroke-width:2px;
-    style Comptime fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
-    style AIR fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
-    style BE_Native fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style BE_LLVM fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    style Obj fill:#e6ffe6,stroke:#009900,stroke-width:2px;
+    classDef default stroke:#495057;
+    style S_Front stroke:#ff9900,stroke-width:2px;
+    style S_Sema stroke:#ffc107,stroke-width:2px;
+    style S_Back stroke:#009900,stroke-width:2px;
+    style Src stroke:#495057,stroke-width:2px;
+    style AST stroke:#495057,stroke-width:2px;
+    style ZIR stroke:#ff9900,stroke-width:2px;
+    style Comptime stroke:#ffc107,stroke-width:2px;
+    style AIR stroke:#ffc107,stroke-width:2px;
+    style BE_Native stroke:#0066cc,stroke-width:2px;
+    style BE_LLVM stroke:#0066cc,stroke-width:2px;
+    style Obj stroke:#009900,stroke-width:2px;
 ```
 
 1. **AST（抽象语法树）**：
@@ -111,3 +111,20 @@ graph LR
 4. **后端选择（Native vs LLVM）**：
    - **Native 后端**：在 Debug 模式下，Zig 可以直接将 AIR 翻译为目标架构机器码，绕过 LLVM IR 生成环节，缩短构建耗时；
    - **LLVM 后端**：在 Release 模式下，Zig 将 AIR 转换为 LLVM IR，调用 LLVM 优化器与后端生成更高执行效率的机器码。
+
+---
+
+## 3. ZCU 单体编译分析与演进瓶颈
+
+### 3.1 死代码消除与跨模块分析
+
+ZCU 模型的特点在于结合了按需语义分析：
+- **按需语义分析与死代码消除**：在传统 C/C++ 中，参与编译的源文件中的函数通常都会被完整生成为机器码，依赖链接器（如 `--gc-sections` 或 LTO）剔除无用符号。在 Zig 中，未被 `main` 或导出符号引用的函数和泛型实例不会进入 Sema 语义分析阶段，减少了多余的代码生成；
+- **跨模块内联**：编译器拥有当前构建目标下全部 Zig 模块的 AST，跨模块的小函数调用便于直接进行内联优化。
+
+### 3.2 局限与不足
+
+1. **类型修改易引发连带重新分析**：
+   在分离编译模型中，单个源文件的修改通常只重新生成对应的目标文件；而在 ZCU 模型下，由于泛型推导是全工程关联的，修改基础库中的类型定义可能会导致依赖该类型的上层模块需要重新进行语义分析；
+2. **大型工程的内存占用**：
+   在代码规模较大的工程中，维护全局符号表、comptime 执行环境及 AIR 指令图会增加编译器的常驻内存开销。目前 Zig 团队正在持续推进自托管链接器的函数级就地修补（In-place binary patching），以优化大型项目的增量构建与内存开销。
