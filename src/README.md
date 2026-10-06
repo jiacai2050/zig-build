@@ -14,7 +14,7 @@ Zig 提供了另一种思路：
 
 由于 Zig 处于快速迭代期，网络上较多旧版本（0.11、0.12 等）的代码片段已无法直接使用。本书梳理 Zig 构建系统的核心抽象、常用 API 以及底层执行机制，帮助读者掌握基于现代 Zig 的构建实践。
 
-> 🌐 网站：<https://jiacai2050.github.io/zig-build/>
+> 🌐 网站：<https://jiacai2050.github.io/zig-build-0.16/>
 
 ![](cover.svg)
 
@@ -57,7 +57,7 @@ Zig 提供了另一种思路：
 
 ## 环境与代码约定
 
-- **Zig 版本**：基于 **Zig 0.16.0**。
+- **Zig 版本**：基于 **Zig 0.16.0**。0.17 的版本见[这里](https://jiacai2050.github.io/x/zig-build/)。
 - **实战示例代码**：
   本书配套了 5 个完全独立的 Zig 0.16.0 示例工程，源码均位于项目的 `examples/` 目录，读者可直接点击链接浏览源码或在本地运行：
   | 示例项目 | 核心验证场景 | 对应章节 |
@@ -78,5 +78,5 @@ Zig 提供了另一种思路：
 书中的所有代码均经过了本地与 CI 测试，并利用 AI 润色，但 AI 存在幻觉，再加上 Zig 及其构建系统演进较快，个人精力与水平有限，书中难免会有疏漏或理解偏差。
 
 如果你在阅读或实战中发现任何错误（代码无法运行、原理解释有误、文字错漏等），欢迎反馈与交流：
-- 在 GitHub 提交 Issue 或 PR：<https://github.com/jiacai2050/x>
+- 在 GitHub 提交 Issue 或 PR：<https://github.com/jiacai2050/zig-build-0.16>
 - 加入 [ZigCC 微信群](https://github.com/orgs/zigcc/discussions/134)，与更多人一起讨论、交流 Zig
